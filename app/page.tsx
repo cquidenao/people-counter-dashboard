@@ -1,9 +1,95 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import KpiCard from "../components/KpiCard";
 import EventsTable from "../components/EventsTable";
 import MetricsChart from "../components/MetricsChart";
-import { mockMetrics, mockEvents, mockSeries } from "../lib/mock";
+
+type Metrics = {
+  total: number;
+  last_1h: number;
+  last_24h: number;
+};
+
+type EventOut = {
+  id: string;
+  ts: string;
+  camera_id?: string | null;
+  direction: string;
+  count_delta: number;
+  meta?: Record<string, any> | null;
+};
+
+type SeriesPoint = { label: string; value: number };
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
+
+function authHeaders() {
+  return API_KEY ? { "x-api-key": API_KEY } : {};
+}
+
+function buildSeriesFromEvents(events: EventOut[], hours = 12): SeriesPoint[] {
+  const now = new Date();
+  const buckets = new Map<string, number>();
+
+  for (let i = hours - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 60 * 60 * 1000);
+    const key = `${String(d.getHours()).padStart(2, "0")}:00`;
+    buckets.set(key, 0);
+  }
+
+  for (const e of events) {
+    const t = new Date(e.ts);
+    const key = `${String(t.getHours()).padStart(2, "0")}:00`;
+    if (buckets.has(key)) buckets.set(key, (buckets.get(key) || 0) + (e.count_delta || 0));
+  }
+
+  return Array.from(buckets.entries()).map(([label, value]) => ({ label, value }));
+}
 
 export default function Page() {
+  const [metrics, setMetrics] = useState<Metrics>({ total: 0, last_1h: 0, last_24h: 0 });
+  const [events, setEvents] = useState<EventOut[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string>("—");
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const [mRes, eRes] = await Promise.all([
+        fetch(`${API_BASE}/metrics`, { headers: authHeaders(), cache: "no-store" }),
+        fetch(`${API_BASE}/events?limit=12`, { headers: authHeaders(), cache: "no-store" }),
+      ]);
+
+      if (!mRes.ok) throw new Error(`metrics ${mRes.status}`);
+      if (!eRes.ok) throw new Error(`events ${eRes.status}`);
+
+      const m = (await mRes.json()) as Metrics;
+      const e = (await eRes.json()) as EventOut[];
+
+      setMetrics(m);
+      setEvents(e);
+      setLastUpdated(new Date().toLocaleString());
+    } catch (err: any) {
+      setError(err?.message || "Error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 3000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const series: SeriesPoint[] = useMemo(() => buildSeriesFromEvents(events, 12), [events]);
+
   return (
     <main className="min-h-screen bg-[#070A12] text-slate-100">
       {/* Top bar */}
@@ -22,7 +108,7 @@ export default function Page() {
           <div className="text-right">
             <p className="text-xs text-slate-400">Modo</p>
             <p className="text-sm font-semibold">
-              Mock <span className="text-slate-500 font-normal">· listo para Vercel</span>
+              Live <span className="text-slate-500 font-normal">· FastAPI</span>
             </p>
           </div>
         </div>
@@ -34,22 +120,26 @@ export default function Page() {
         <div className="mb-6 rounded-3xl border border-white/5 bg-gradient-to-b from-white/5 to-white/[0.02] p-6 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight">
-                Control operacional del tótem
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                KPIs principales, tendencia y últimos eventos (cuando conectemos el backend, esto se vuelve tiempo real).
-              </p>
+              <h2 className="text-2xl font-bold tracking-tight">Control operacional del tótem</h2>
+              <p className="mt-1 text-sm text-slate-400">KPIs, tendencia y últimos eventos.</p>
+              {error ? (
+                <p className="mt-2 text-sm text-rose-300">
+                  Error: {error} · Revisa NEXT_PUBLIC_API_BASE / CORS / API_KEY
+                </p>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-3">
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2">
                 <p className="text-xs text-slate-400">Última actualización</p>
-                <p className="text-sm font-semibold">{new Date().toLocaleString()}</p>
+                <p className="text-sm font-semibold">{lastUpdated}</p>
               </div>
 
-              <button className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold hover:bg-white/[0.06] transition">
-                Actualizar
+              <button
+                onClick={load}
+                className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold hover:bg-white/[0.06] transition"
+              >
+                {loading ? "Actualizando..." : "Actualizar"}
               </button>
             </div>
           </div>
@@ -57,45 +147,28 @@ export default function Page() {
 
         {/* KPIs */}
         <section className="grid gap-4 md:grid-cols-3 mb-6">
-          <KpiCard
-            title="Total acumulado"
-            value={mockMetrics.total}
-            subtitle="Histórico"
-            trend="+3.1%"
-          />
-          <KpiCard
-            title="Última 1 hora"
-            value={mockMetrics.last_1h}
-            subtitle="Últimos 60 min"
-            trend="pico"
-          />
-          <KpiCard
-            title="Últimas 24 horas"
-            value={mockMetrics.last_24h}
-            subtitle="Últimas 24h"
-            trend="+1.2%"
-          />
+          <KpiCard title="Total acumulado" value={metrics.total} subtitle="Histórico" trend="live" />
+          <KpiCard title="Última 1 hora" value={metrics.last_1h} subtitle="Últimos 60 min" trend="live" />
+          <KpiCard title="Últimas 24 horas" value={metrics.last_24h} subtitle="Últimas 24h" trend="live" />
         </section>
 
         {/* Main grid */}
         <section className="grid gap-4 lg:grid-cols-5">
-          {/* Chart */}
           <div className="lg:col-span-3 rounded-3xl border border-white/5 bg-white/[0.02] p-6 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold">Tendencia</h3>
-                <p className="text-xs text-slate-400">Distribución horaria (mock)</p>
+                <p className="text-xs text-slate-400">Agrupado por hora (últimas 12h)</p>
               </div>
               <span className="text-xs rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
-                Últimas horas
+                Live
               </span>
             </div>
             <div className="h-[280px]">
-              <MetricsChart series={mockSeries} />
+              <MetricsChart series={series as any} />
             </div>
           </div>
 
-          {/* Events */}
           <div className="lg:col-span-2 rounded-3xl border border-white/5 bg-white/[0.02] p-6 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]">
             <div className="flex items-start justify-between mb-4">
               <div>
@@ -106,14 +179,11 @@ export default function Page() {
                 Online
               </span>
             </div>
-            <EventsTable events={mockEvents} />
+            <EventsTable events={events as any} apiBase={API_BASE} />
           </div>
         </section>
 
-        {/* Footer */}
-        <div className="mt-6 text-xs text-slate-500">
-          People Counter · Dashboard v1 · Próximo paso: conectar API real.
-        </div>
+        <div className="mt-6 text-xs text-slate-500">People Counter · Dashboard v1 · API: {API_BASE}</div>
       </div>
     </main>
   );
