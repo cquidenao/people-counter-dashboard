@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import KpiCard from "../components/KpiCard";
 import EventsTable from "../components/EventsTable";
 import MetricsChart from "../components/MetricsChart";
+import SnapshotsGrid from "../components/SnapshotsGrid";
 
 type Metrics = {
   total: number;
@@ -22,7 +23,8 @@ type EventOut = {
 
 type SeriesPoint = { label: string; value: number };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
+// ✅ Si quieres volver a .env luego, cámbialo por process.env.NEXT_PUBLIC_API_BASE
+const API_BASE = "http://127.0.0.1:8000";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
 function authHeaders() {
@@ -62,7 +64,7 @@ export default function Page() {
     try {
       const [mRes, eRes] = await Promise.all([
         fetch(`${API_BASE}/metrics`, { headers: authHeaders(), cache: "no-store" }),
-        fetch(`${API_BASE}/events?limit=12`, { headers: authHeaders(), cache: "no-store" }),
+        fetch(`${API_BASE}/events?limit=48`, { headers: authHeaders(), cache: "no-store" }), // 👈 más eventos para galería
       ]);
 
       if (!mRes.ok) throw new Error(`metrics ${mRes.status}`);
@@ -121,10 +123,10 @@ export default function Page() {
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Control operacional del tótem</h2>
-              <p className="mt-1 text-sm text-slate-400">KPIs, tendencia y últimos eventos.</p>
+              <p className="mt-1 text-sm text-slate-400">KPIs, tendencia, eventos y capturas.</p>
               {error ? (
                 <p className="mt-2 text-sm text-rose-300">
-                  Error: {error} · Revisa NEXT_PUBLIC_API_BASE / CORS / API_KEY
+                  Error: {error} · Revisa API_BASE / CORS / API_KEY
                 </p>
               ) : null}
             </div>
@@ -154,6 +156,7 @@ export default function Page() {
 
         {/* Main grid */}
         <section className="grid gap-4 lg:grid-cols-5">
+          {/* Chart */}
           <div className="lg:col-span-3 rounded-3xl border border-white/5 bg-white/[0.02] p-6 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]">
             <div className="flex items-start justify-between mb-4">
               <div>
@@ -169,11 +172,12 @@ export default function Page() {
             </div>
           </div>
 
+          {/* Events */}
           <div className="lg:col-span-2 rounded-3xl border border-white/5 bg-white/[0.02] p-6 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold">Últimos eventos</h3>
-                <p className="text-xs text-slate-400">Últimos 12 registros</p>
+                <p className="text-xs text-slate-400">Últimos registros</p>
               </div>
               <span className="text-xs rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
                 Online
@@ -181,6 +185,11 @@ export default function Page() {
             </div>
             <EventsTable events={events as any} apiBase={API_BASE} />
           </div>
+        </section>
+
+        {/* ✅ Snapshots gallery */}
+        <section className="mt-6">
+          <SnapshotsGrid events={events as any} apiBase={API_BASE} limit={24} />
         </section>
 
         <div className="mt-6 text-xs text-slate-500">People Counter · Dashboard v1 · API: {API_BASE}</div>
