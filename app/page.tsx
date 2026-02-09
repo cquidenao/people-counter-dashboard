@@ -24,8 +24,8 @@ type EventOut = {
 type SeriesPoint = { label: string; value: number };
 
 // ✅ Si quieres volver a .env luego, cámbialo por process.env.NEXT_PUBLIC_API_BASE
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || "https://people-counter-y9mn.onrender.com";
+const API_BASE = "/api";
+
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
 function authHeaders() {
