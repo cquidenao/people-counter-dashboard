@@ -2,7 +2,7 @@
 const nextConfig = {
   output: "export",
   trailingSlash: true,
-  images: { unoptimized: true }, // importante en export
+  images: { unoptimized: true },
 };
 
 module.exports = nextConfig;
